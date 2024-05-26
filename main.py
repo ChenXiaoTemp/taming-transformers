@@ -108,7 +108,7 @@ def get_parser(**parser_kwargs):
 
 def nondefault_trainer_args(opt):
     parser = argparse.ArgumentParser()
-    parser = Trainer.add_argparse_args(parser)
+    #parser = Trainer.add_argparse_args(parser)
     args = parser.parse_args([])
     return sorted(k for k in vars(args) if getattr(opt, k) != getattr(args, k))
 
@@ -186,7 +186,7 @@ class SetupCallback(Callback):
         self.config = config
         self.lightning_config = lightning_config
 
-    def on_pretrain_routine_start(self, trainer, pl_module):
+    def on_fit_start(self, trainer, pl_module):
         if trainer.global_rank == 0:
             # Create logdirs and save configs
             os.makedirs(self.logdir, exist_ok=True)
@@ -222,7 +222,7 @@ class ImageLogger(Callback):
         self.max_images = max_images
         self.logger_log_images = {
             pl.loggers.WandbLogger: self._wandb,
-            pl.loggers.TestTubeLogger: self._testtube,
+            pl.loggers.CSVLogger: self._testtube,
         }
         self.log_steps = [2 ** n for n in range(int(np.log2(self.batch_freq)) + 1)]
         if not increase_log_steps:
@@ -245,9 +245,9 @@ class ImageLogger(Callback):
             grid = (grid+1.0)/2.0 # -1,1 -> 0,1; c,h,w
 
             tag = f"{split}/{k}"
-            pl_module.logger.experiment.add_image(
-                tag, grid,
-                global_step=pl_module.global_step)
+            #pl_module.logger.experiment.add_image(
+            #    tag, grid,
+            #    global_step=pl_module.global_step)
 
     @rank_zero_only
     def log_local(self, save_dir, split, images,
@@ -309,10 +309,10 @@ class ImageLogger(Callback):
             return True
         return False
 
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, *args,**kwargs):
         self.log_img(pl_module, batch, batch_idx, split="train")
 
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, *args,**kwargs):
         self.log_img(pl_module, batch, batch_idx, split="val")
 
 
@@ -367,7 +367,7 @@ if __name__ == "__main__":
     sys.path.append(os.getcwd())
 
     parser = get_parser()
-    parser = Trainer.add_argparse_args(parser)
+    #parser = Trainer.add_argparse_args(parser)
 
     opt, unknown = parser.parse_known_args()
     if opt.name and opt.resume:
@@ -453,15 +453,15 @@ if __name__ == "__main__":
                     "id": nowname,
                 }
             },
-            "testtube": {
-                "target": "pytorch_lightning.loggers.TestTubeLogger",
+            "csvlogger": {
+                "target": "pytorch_lightning.loggers.CSVLogger",
                 "params": {
-                    "name": "testtube",
+                    "name": "csvlogger",
                     "save_dir": logdir,
                 }
             },
         }
-        default_logger_cfg = default_logger_cfgs["testtube"]
+        default_logger_cfg = default_logger_cfgs["csvlogger"]
         logger_cfg = lightning_config.logger or OmegaConf.create()
         logger_cfg = OmegaConf.merge(default_logger_cfg, logger_cfg)
         trainer_kwargs["logger"] = instantiate_from_config(logger_cfg)
@@ -482,9 +482,9 @@ if __name__ == "__main__":
             default_modelckpt_cfg["params"]["monitor"] = model.monitor
             default_modelckpt_cfg["params"]["save_top_k"] = 3
 
-        modelckpt_cfg = lightning_config.modelcheckpoint or OmegaConf.create()
-        modelckpt_cfg = OmegaConf.merge(default_modelckpt_cfg, modelckpt_cfg)
-        trainer_kwargs["checkpoint_callback"] = instantiate_from_config(modelckpt_cfg)
+        #modelckpt_cfg = lightning_config.modelcheckpoint or OmegaConf.create()
+        #modelckpt_cfg = OmegaConf.merge(default_modelckpt_cfg, modelckpt_cfg)
+        #trainer_kwargs["checkpoint_callback"] = instantiate_from_config(modelckpt_cfg)
 
         # add callback which sets up log directory
         default_callbacks_cfg = {
@@ -515,6 +515,7 @@ if __name__ == "__main__":
                     #"log_momentum": True
                 }
             },
+            "checkpoint_callback":default_modelckpt_cfg
         }
         callbacks_cfg = lightning_config.callbacks or OmegaConf.create()
         callbacks_cfg = OmegaConf.merge(default_callbacks_cfg, callbacks_cfg)
@@ -556,8 +557,8 @@ if __name__ == "__main__":
                 import pudb; pudb.set_trace()
 
         import signal
-        signal.signal(signal.SIGUSR1, melk)
-        signal.signal(signal.SIGUSR2, divein)
+        #signal.signal(signal.SIGTERM, melk)
+        #signal.signal(signal.SIGTERM, divein)
 
         # run
         if opt.train:
@@ -567,7 +568,8 @@ if __name__ == "__main__":
                 melk()
                 raise
         if not opt.no_test and not trainer.interrupted:
-            trainer.test(model, data)
+            #trainer.test(model, data)
+            pass
     except Exception:
         if opt.debug and trainer.global_rank==0:
             try:
